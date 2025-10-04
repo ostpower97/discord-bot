@@ -10,49 +10,64 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY;
 
-// Hilfsfunktion zum Abrufen der Top-Gainer und -Loser
+// Hilfsfunktion: gestriges Datum als Text
+function getYesterdayDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+// API-Abfrage Top Gainer / Loser
 async function getTopMovers() {
   try {
     const url = `https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${ALPHA_VANTAGE_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
 
-    const gainers = data.top_gainers?.slice(0, 5) || [];
-    const losers = data.top_losers?.slice(0, 5) || [];
+    const gainers = data.top_gainers?.slice(0, 20) || [];
+    const losers = data.top_losers?.slice(0, 20) || [];
 
     return { gainers, losers };
   } catch (err) {
-    console.error('Fehler beim Abrufen der API-Daten:', err);
+    console.error('❌ Fehler beim Abrufen der API-Daten:', err);
     return { gainers: [], losers: [] };
   }
 }
 
-// Funktion, um alles im Discord-Kanal zu posten
+// Discord-Post
 async function postDailyData() {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
     const { gainers, losers } = await getTopMovers();
+    const dateText = getYesterdayDate();
 
-    let message = '📈 **Top 5 Gainer:**\n';
-    gainers.forEach(stock => {
-      message += `• ${stock.ticker}: ${stock.change_percentage}\n`;
+    let message = `📊 **Top 20 Aktien vom ${dateText}**\n\n`;
+
+    message += '📈 **Top 20 Gainer:**\n';
+    gainers.forEach((s, i) => {
+      message += `${i + 1}. **${s.ticker}** (${s.name}) — ${s.change_percentage}\n`;
     });
 
-    message += '\n📉 **Top 5 Loser:**\n';
-    losers.forEach(stock => {
-      message += `• ${stock.ticker}: ${stock.change_percentage}\n`;
+    message += '\n📉 **Top 20 Loser:**\n';
+    losers.forEach((s, i) => {
+      message += `${i + 1}. **${s.ticker}** (${s.name}) — ${s.change_percentage}\n`;
     });
 
     await channel.send(message);
     console.log('✅ Erfolgreich im Discord gepostet.');
   } catch (err) {
-    console.error('Fehler beim Posten:', err);
+    console.error('❌ Fehler beim Posten:', err);
   }
 }
 
-// Wenn der Client bereit ist → direkt posten
+// Wenn der Client bereit ist → Daten posten
 client.once('ready', () => {
-  console.log(`✅ Bot ist online als ${client.user.tag}`);
+  console.log(`✅ Bot online als ${client.user.tag}`);
   postDailyData().then(() => client.destroy());
 });
 
