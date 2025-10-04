@@ -1,74 +1,67 @@
-import 'dotenv/config';
-import { Client, GatewayIntentBits } from 'discord.js';
-import fetch from 'node-fetch';
+import dotenv from "dotenv";
+import fetch from "node-fetch";
+import { Client, GatewayIntentBits } from "discord.js";
 
+dotenv.config();
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
+
+// Discord-Client initialisieren
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY;
+async function fetchStockData() {
+  const response = await fetch("https://api.chartmill.com/stock/analyst-up-and-down-grades");
+  if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+  const html = await response.text();
 
-// Hilfsfunktion: gestriges Datum als Text
-function getYesterdayDate() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toLocaleDateString('de-DE', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  // Datenquelle geändert → wir holen Gainer/Loser von chartmill API
+  const gainersRes = await fetch("https://api.chartmill.com/stock/top-gainers");
+  const losersRes = await fetch("https://api.chartmill.com/stock/top-losers");
+
+  const gainers = (await gainersRes.json()).slice(0, 5);
+  const losers = (await losersRes.json()).slice(0, 5);
+
+  return { gainers, losers };
 }
 
-// API-Abfrage Top Gainer / Loser
-async function getTopMovers() {
-  try {
-    const url = `https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${ALPHA_VANTAGE_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
-
-    const gainers = data.top_gainers?.slice(0, 20) || [];
-    const losers = data.top_losers?.slice(0, 20) || [];
-
-    return { gainers, losers };
-  } catch (err) {
-    console.error('❌ Fehler beim Abrufen der API-Daten:', err);
-    return { gainers: [], losers: [] };
-  }
-}
-
-// Discord-Post
 async function postDailyData() {
   try {
+    const { gainers, losers } = await fetchStockData();
+
+    // Formatierung
+    const gainersMsg = gainers
+      .map(
+        (g) =>
+          `• **${g.symbol}** (${g.company_name || "?"}) — ${g.percentage_change.toFixed(2)}%`
+      )
+      .join("\n");
+
+    const losersMsg = losers
+      .map(
+        (l) =>
+          `• **${l.symbol}** (${l.company_name || "?"}) — ${l.percentage_change.toFixed(2)}%`
+      )
+      .join("\n");
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = yesterday.toLocaleDateString("de-DE");
+
+    const message = `📊 **Top 5 Gainer & Loser – ${dateStr} (Vortag)**\n\n📈 **Top 5 Gainer:**\n${gainersMsg}\n\n📉 **Top 5 Loser:**\n${losersMsg}`;
+
     const channel = await client.channels.fetch(CHANNEL_ID);
-    const { gainers, losers } = await getTopMovers();
-    const dateText = getYesterdayDate();
-
-    let message = `📊 **Top 20 Aktien vom ${dateText}**\n\n`;
-
-    message += '📈 **Top 20 Gainer:**\n';
-    gainers.forEach((s, i) => {
-      message += `${i + 1}. **${s.ticker}** (${s.name}) — ${s.change_percentage}\n`;
-    });
-
-    message += '\n📉 **Top 20 Loser:**\n';
-    losers.forEach((s, i) => {
-      message += `${i + 1}. **${s.ticker}** (${s.name}) — ${s.change_percentage}\n`;
-    });
-
     await channel.send(message);
-    console.log('✅ Erfolgreich im Discord gepostet.');
+
+    console.log("Tagesdaten erfolgreich gepostet!");
   } catch (err) {
-    console.error('❌ Fehler beim Posten:', err);
+    console.error("Fehler beim Posten:", err);
+  } finally {
+    client.destroy();
   }
 }
 
-// Wenn der Client bereit ist → Daten posten
-client.once('ready', () => {
-  console.log(`✅ Bot online als ${client.user.tag}`);
-  postDailyData().then(() => client.destroy());
-});
-
-client.login(TOKEN);
+client.once("ready", postDailyData);
+client.login(DISCORD_TOKEN);
