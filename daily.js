@@ -10,19 +10,28 @@ client.once('clientReady', async () => {
     console.log(`✅ Bot online als ${client.user.tag}`);
 
     try {
+        // AlphaVantage API abfragen
         const url = `https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${process.env.API_KEY}`;
         const response = await fetch(url);
         const data = await response.json();
 
-        const channel = client.channels.cache.get(process.env.CHANNEL_ID);
-        if (!channel) return console.log('Kanal nicht gefunden!');
+        // Prüfen ob Daten existieren
+        if (!data || Object.keys(data).length === 0) {
+            console.log('Keine Daten von AlphaVantage erhalten.');
+            return client.destroy();
+        }
 
-        await channel.send(`Tägliche API-Daten:\n\`\`\`${JSON.stringify(data, null, 2)}\`\`\``);
-    } catch (error) {
-        console.error(error);
-    } finally {
-        client.destroy();
-    }
-});
+        // Server + Kanal abrufen
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const channel = await guild.channels.fetch(process.env.CHANNEL_ID);
 
-client.login(process.env.DISCORD_TOKEN);
+        if (!channel) {
+            console.log('Kanal nicht gefunden!');
+            return client.destroy();
+        }
+
+        // Nachricht zusammenstellen (nur Top Gainer + Looser)
+        const gainers = data['top_gainers']?.slice(0, 5) || [];
+        const losers = data['top_losers']?.slice(0, 5) || [];
+
+        let message = '**📈 Top Gainer:**\n';
