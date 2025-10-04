@@ -4,26 +4,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// Bot nur mit minimalen Intents
+const client = new Client({ intents: [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 async function postDailyData() {
     try {
-        // Bot einloggen und auf ready warten
         await client.login(process.env.DISCORD_TOKEN);
         await new Promise(resolve => client.once('clientReady', resolve));
 
-        // Server abrufen
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
-
-        // Kanal abrufen
-        const channel = await guild.channels.fetch(process.env.CHANNEL_ID);
+        // Kanal direkt abrufen (Client muss Mitglied sein)
+        const channel = await client.channels.fetch(process.env.CHANNEL_ID);
         if (!channel) {
             console.log('Kanal nicht gefunden!');
             client.destroy();
             return;
         }
 
-        // AlphaVantage API-Daten abrufen
+        // API-Daten abrufen
         const url = `https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${process.env.API_KEY}`;
         const response = await fetch(url);
         const data = await response.json();
@@ -34,7 +31,7 @@ async function postDailyData() {
             return;
         }
 
-        // Nachricht formatieren: nur die wichtigsten Infos
+        // Nachricht formatieren
         const gainers = data['top_gainers']?.slice(0, 5) || [];
         const losers = data['top_losers']?.slice(0, 5) || [];
 
@@ -59,5 +56,4 @@ async function postDailyData() {
     }
 }
 
-// Funktion direkt ausführen
 postDailyData();
