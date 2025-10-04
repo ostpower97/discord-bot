@@ -1,1 +1,29 @@
+name: Daily Discord Bot
 
+on:
+  schedule:
+    - cron: '0 07 * * *'   # täglich um 07:00 UTC
+  workflow_dispatch:       # ermöglicht manuelles Starten
+
+jobs:
+  daily-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Repository auschecken
+      uses: actions/checkout@v3
+
+    - name: Node.js Setup
+      uses: actions/setup-node@v3
+      with:
+        node-version: '22'
+
+    - name: Abhängigkeiten installieren
+      run: npm install
+
+    - name: Bot ausführen
+      env:
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        API_KEY: ${{ secrets.API_KEY }}
+        CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+      run: node daily.js
