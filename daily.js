@@ -1,67 +1,59 @@
-import dotenv from "dotenv";
-import fetch from "node-fetch";
-import { Client, GatewayIntentBits } from "discord.js";
+import 'dotenv/config';
+import { Client, GatewayIntentBits } from 'discord.js';
+import fetch from 'node-fetch';
 
-dotenv.config();
-
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-
-// Discord-Client initialisieren
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [GatewayIntentBits.Guilds]
 });
 
-async function fetchStockData() {
-  const response = await fetch("https://api.chartmill.com/stock/analyst-up-and-down-grades");
-  if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-  const html = await response.text();
+const TOKEN = process.env.DISCORD_TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
+const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_KEY;
 
-  // Datenquelle geändert → wir holen Gainer/Loser von chartmill API
-  const gainersRes = await fetch("https://api.chartmill.com/stock/top-gainers");
-  const losersRes = await fetch("https://api.chartmill.com/stock/top-losers");
-
-  const gainers = (await gainersRes.json()).slice(0, 5);
-  const losers = (await losersRes.json()).slice(0, 5);
-
-  return { gainers, losers };
-}
-
-async function postDailyData() {
+// Hilfsfunktion zum Abrufen der Top-Gainer und -Loser
+async function getTopMovers() {
   try {
-    const { gainers, losers } = await fetchStockData();
+    const url = `https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${ALPHA_VANTAGE_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
 
-    // Formatierung
-    const gainersMsg = gainers
-      .map(
-        (g) =>
-          `• **${g.symbol}** (${g.company_name || "?"}) — ${g.percentage_change.toFixed(2)}%`
-      )
-      .join("\n");
+    const gainers = data.top_gainers?.slice(0, 5) || [];
+    const losers = data.top_losers?.slice(0, 5) || [];
 
-    const losersMsg = losers
-      .map(
-        (l) =>
-          `• **${l.symbol}** (${l.company_name || "?"}) — ${l.percentage_change.toFixed(2)}%`
-      )
-      .join("\n");
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = yesterday.toLocaleDateString("de-DE");
-
-    const message = `📊 **Top 5 Gainer & Loser – ${dateStr} (Vortag)**\n\n📈 **Top 5 Gainer:**\n${gainersMsg}\n\n📉 **Top 5 Loser:**\n${losersMsg}`;
-
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    await channel.send(message);
-
-    console.log("Tagesdaten erfolgreich gepostet!");
+    return { gainers, losers };
   } catch (err) {
-    console.error("Fehler beim Posten:", err);
-  } finally {
-    client.destroy();
+    console.error('Fehler beim Abrufen der API-Daten:', err);
+    return { gainers: [], losers: [] };
   }
 }
 
-client.once("ready", postDailyData);
-client.login(DISCORD_TOKEN);
+// Funktion, um alles im Discord-Kanal zu posten
+async function postDailyData() {
+  try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    const { gainers, losers } = await getTopMovers();
+
+    let message = '📈 **Top 5 Gainer:**\n';
+    gainers.forEach(stock => {
+      message += `• ${stock.ticker}: ${stock.change_percentage}\n`;
+    });
+
+    message += '\n📉 **Top 5 Loser:**\n';
+    losers.forEach(stock => {
+      message += `• ${stock.ticker}: ${stock.change_percentage}\n`;
+    });
+
+    await channel.send(message);
+    console.log('✅ Erfolgreich im Discord gepostet.');
+  } catch (err) {
+    console.error('Fehler beim Posten:', err);
+  }
+}
+
+// Wenn der Client bereit ist → direkt posten
+client.once('ready', () => {
+  console.log(`✅ Bot ist online als ${client.user.tag}`);
+  postDailyData().then(() => client.destroy());
+});
+
+client.login(TOKEN);
