@@ -62,6 +62,12 @@ async function postDailyData() {
     const filteredGainers = gainers.filter(stock => nasdaq100.has(stock.ticker)).slice(0, 5);
     const filteredLosers = losers.filter(stock => nasdaq100.has(stock.ticker)).slice(0, 5);
 
+    // Wenn keine passenden NASDAQ-100-Ticker gefunden, Bot beenden
+    if (filteredGainers.length === 0 && filteredLosers.length === 0) {
+      console.log('Keine NASDAQ-100-Ticker unter den Top-Movern gefunden. Bot läuft nicht.');
+      return client.destroy();
+    }
+
     let message = '📈 **Top 5 Gainer (NASDAQ-100, Vortag):**\n';
     filteredGainers.forEach(stock => {
       message += `• ${stock.ticker}: ${stock.change_percentage}\n`;
@@ -76,13 +82,15 @@ async function postDailyData() {
     console.log('✅ Erfolgreich im Discord gepostet.');
   } catch (err) {
     console.error('Fehler beim Posten:', err);
+  } finally {
+    client.destroy();
   }
 }
 
 // Wenn der Client bereit ist → direkt posten
 client.once('ready', () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
-  postDailyData().then(() => client.destroy());
+  postDailyData();
 });
 
 client.login(TOKEN);
